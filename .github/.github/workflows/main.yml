@@ -1,0 +1,65 @@
+name: Build Kvas Fox CIA
+
+on:
+  workflow_dispatch:        # lets you press "Run workflow" on the Actions tab
+  push:
+    branches: [ main, master ]
+
+permissions:
+  contents: write           # needed to publish the release with the .cia
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitarm:latest
+
+    steps:
+      - name: Get the project files
+        uses: actions/checkout@v4
+
+      - name: Install helper packages
+        run: |
+          apt-get update
+          apt-get install -y unzip zip git cmake build-essential curl qrencode
+          (command -v tex3ds >/dev/null 2>&1 && command -v 3dsxtool >/dev/null 2>&1) || dkp-pacman -S --noconfirm 3ds-dev || true
+
+      - name: Unpack the uploaded zip parts (if any)
+        run: |
+          for z in *.zip; do [ -f "$z" ] && unzip -o -q "$z"; done
+          ls
+
+      - name: Build the .3dsx
+        run: make
+
+      - name: Build the CIA tools
+        run: sh tools/get_cia_tools.sh
+
+      - name: Build the .cia
+        run: make cia
+
+      - name: Make a QR code for FBI
+        run: |
+          URL="https://github.com/${{ github.repository }}/releases/download/latest/KvasFox.cia"
+          qrencode -s 8 -o KvasFox_QR.png "$URL"
+          echo "$URL" > KvasFox_link.txt
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: KvasFox
+          path: |
+            KvasFox.cia
+            KvasFox.3dsx
+            KvasFox_QR.png
+            KvasFox_link.txt
+
+      - name: Publish a release (public download link)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Kvas Fox (latest build)
+          files: |
+            KvasFox.cia
+            KvasFox.3dsx
+            KvasFox_QR.png
+            KvasFox_link.txt
